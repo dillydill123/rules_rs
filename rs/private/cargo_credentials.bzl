@@ -25,9 +25,19 @@ ERROR: Cannot determine home directory in order to load home `.cargo/credentials
 
     return result
 
-def registry_auth_headers(cargo_credentials, source):
+def registry_auth(cargo_credentials, source, url):
+    """Return an auth dict suitable for ctx.download(auth=...).
+
+    Args:
+        cargo_credentials: dict mapping registry index to token string.
+        source: the sparse+ registry source string.
+        url: the actual download URL to authenticate.
+
+    Returns:
+        dict mapping url to auth info, or empty dict.
+    """
     token = cargo_credentials.get(source)
     if token:
-        return {"Authorization": token}
+        return {url: {"type": "pattern", "pattern": token}}
 
     return {}

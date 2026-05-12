@@ -1,6 +1,7 @@
 load("@bazel_tools//tools/build_defs/repo:cache.bzl", "get_default_canonical_id")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "patch")
-load(":cargo_credentials.bzl", "load_cargo_credentials", "registry_auth_headers")
+load(":netrc.bzl", "netrc_auth")
+load(":cargo_credentials.bzl", "load_cargo_credentials", "registry_auth")
 load(":registry_utils.bzl", "sharded_path")
 load(":repository_utils.bzl", "cargo_build_file_values", "common_attrs", "render_build_file_content")
 load(":toml2json.bzl", "run_toml2json")
@@ -26,15 +27,6 @@ def _generate_build_file(rctx, cargo_toml, purl_qualifiers = {}, package_path = 
     return render_build_file_content(rctx, rctx.attr, values, bazel_metadata = cargo.bazel_metadata)
 
 def _crate_repository_impl(rctx):
-    # TODO(zbarsky): Is there a better way than fetching this in every crate repository?
-    if rctx.attr.use_home_cargo_credentials:
-        headers = registry_auth_headers(
-            load_cargo_credentials(rctx, rctx.attr.cargo_config),
-            rctx.attr.source,
-        )
-    else:
-        headers = {}
-
     crate_name = rctx.attr.crate_name
     version = rctx.attr.version
     sha256 = rctx.attr.checksum
@@ -49,11 +41,21 @@ def _crate_repository_impl(rctx):
         "sha256-checksum": sha256,
     })
 
+    auth = netrc_auth(rctx, [url], rctx.attr.use_netrc_credentials)
+
+    # Fallback to cargo credentials if netrc did not yield any auth.
+    if not auth and rctx.attr.use_home_cargo_credentials:
+        auth = registry_auth(
+            load_cargo_credentials(rctx, rctx.attr.cargo_config),
+            rctx.attr.source,
+            url,
+        )
+
     rctx.download_and_extract(
         url,
         type = "tar.gz",
         canonical_id = get_default_canonical_id(rctx, urls = [url]),
-        headers = headers,
+        auth = auth,
         strip_prefix = "%s-%s" % (crate_name, version),
         sha256 = sha256,
     )
@@ -74,6 +76,7 @@ crate_repository = repository_rule(
         "cargo_config": attr.label(),
         "source": attr.string(),
         "use_home_cargo_credentials": attr.bool(),
+        "use_netrc_credentials": attr.bool(),
         "checksum": attr.string(),
         "registry_config": attr.label(allow_single_file = True, mandatory = True),
         "sbom_extra_qualifiers": attr.string_dict(),

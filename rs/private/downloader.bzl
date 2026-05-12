@@ -1,6 +1,7 @@
 load("@bazel_tools//tools/build_defs/repo:git_worker.bzl", "git_repo")
 load(":annotations.bzl", "annotation_for")
-load(":cargo_credentials.bzl", "registry_auth_headers")
+load(":cargo_credentials.bzl", "registry_auth")
+load(":netrc.bzl", "netrc_auth")
 load(":registry_utils.bzl", "CRATES_IO_REGISTRY", "sharded_path")
 load(":toml2json.bzl", "run_toml2json")
 
@@ -31,6 +32,15 @@ def _github_source_to_raw_content_base_url(url):
 
 def _sanitize_path_fragment(path):
     return path.replace("/", "_").replace(":", "_")
+
+def _get_auth(mctx, cargo_credentials, source, url, use_netrc_credentials):
+    """Get auth for a URL, preferring netrc over cargo credentials."""
+    auth = netrc_auth(mctx, [url], use_netrc_credentials)
+    if auth:
+        return auth
+
+    # Fallback to cargo credentials if netrc did not yield any auth.
+    return registry_auth(cargo_credentials, source, url)
 
 def new_downloader_state():
     return struct(
@@ -82,6 +92,7 @@ def start_crate_registry_downloads(
         annotations,
         packages,
         cargo_credentials,
+        use_netrc_credentials,
         debug):
     existing_facts = getattr(mctx, "facts", {}) or {}
 
@@ -107,7 +118,7 @@ def start_crate_registry_downloads(
                 in_flight_fetch = mctx.download(
                     url,
                     name + ".jsonl",
-                    headers = registry_auth_headers(cargo_credentials, source),
+                    auth = _get_auth(mctx, cargo_credentials, source, url, use_netrc_credentials),
                     block = False,
                 )
                 state.in_flight_registry_fetches_by_crate[name] = in_flight_fetch

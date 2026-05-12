@@ -1,19 +1,23 @@
-load(":cargo_credentials.bzl", "load_cargo_credentials", "registry_auth_headers")
+load(":cargo_credentials.bzl", "load_cargo_credentials", "registry_auth")
+load(":netrc.bzl", "netrc_auth")
 
 def _registry_config_repository_impl(rctx):
     # TODO(zbarsky): Is there a better way than fetching this in every crate repository?
-    if rctx.attr.use_home_cargo_credentials:
-        headers = registry_auth_headers(
+    url = rctx.attr.source.removeprefix("sparse+") + "config.json"
+    auth = netrc_auth(rctx, [url], rctx.attr.use_netrc_credentials)
+
+    # Fallback to cargo credentials if netrc did not yield any auth.
+    if not auth and rctx.attr.use_home_cargo_credentials:
+        auth = registry_auth(
             load_cargo_credentials(rctx, rctx.attr.cargo_config),
             rctx.attr.source,
+            url
         )
-    else:
-        headers = {}
 
     rctx.download(
-        rctx.attr.source.removeprefix("sparse+") + "config.json",
+        url,
         "config.json",
-        headers = headers,
+        auth = auth,
     )
 
     dl = json.decode(rctx.read("config.json"))["dl"]
@@ -38,5 +42,6 @@ registry_config_repository = repository_rule(
         "source": attr.string(mandatory = True),
         "cargo_config": attr.label(),
         "use_home_cargo_credentials": attr.bool(),
+        "use_netrc_credentials": attr.bool(),
     },
 )

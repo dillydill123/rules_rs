@@ -47,6 +47,15 @@ bzl_library(
 )
 
 bzl_library(
+    name = "netrc",
+    srcs = ["netrc.bzl"],
+    visibility = ["//rs:__subpackages__"],
+    deps = [
+        "@bazel_tools//tools/build_defs/repo:utils.bzl",
+    ],
+)
+
+bzl_library(
     name = "git_crate_metadata_repository",
     srcs = ["git_crate_metadata_repository.bzl"],
     visibility = ["//rs:__subpackages__"],

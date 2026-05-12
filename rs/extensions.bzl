@@ -97,6 +97,7 @@ def _generate_hub_and_spokes(
         platform_triples,
         cargo_credentials,
         cargo_config,
+        use_netrc_credentials,
         validate_lockfile,
         debug,
         use_legacy_rules_rust_platforms,
@@ -108,6 +109,7 @@ def _generate_hub_and_spokes(
         hub_name (string): name
         annotations (dict): Annotation tags to apply.
         suggested_annotation_snippet_paths (dict): Mapping crate -> snippet file path.
+        use_netrc_credentials: bool indicating whether to enable netrc auth for generated repos.
         cargo_path (path): Path to hermetic `cargo` binary.
         cargo_lock_path (path): Cargo.lock path
         workspace_cargo_toml_json (dict): Parsed workspace Cargo.toml
@@ -368,6 +370,7 @@ crate.annotation(
                 patches = annotation.patches,
                 # The repository will need to recompute these, but this lets us avoid serializing them.
                 use_home_cargo_credentials = use_home_cargo_credentials,
+                use_netrc_credentials = use_netrc_credentials,
                 cargo_config = cargo_config,
                 source = source,
                 **kwargs
@@ -664,7 +667,7 @@ def _crate_impl(mctx):
                 if source and source.startswith("sparse+"):
                     registry_sources.add(source)
 
-            start_crate_registry_downloads(mctx, downloader_state, annotations, packages, cargo_credentials, cfg.debug)
+            start_crate_registry_downloads(mctx, downloader_state, annotations, packages, cargo_credentials, cfg.use_netrc_credentials, cfg.debug)
 
             for source in sorted(registry_sources):
                 registry_config_repository(
@@ -672,6 +675,7 @@ def _crate_impl(mctx):
                     source = source,
                     cargo_config = cfg.cargo_config,
                     use_home_cargo_credentials = cfg.use_home_cargo_credentials,
+                    use_netrc_credentials = cfg.use_netrc_credentials,
                 )
 
     for fetch_state in downloader_state.in_flight_git_crate_fetches_by_url.values():
@@ -698,9 +702,9 @@ def _crate_impl(mctx):
 
             if cfg.debug:
                 for _ in range(25):
-                    _generate_hub_and_spokes(mctx, cfg.name, annotations, suggested_annotation_snippet_paths, cargo_path, cfg.cargo_lock, cargo_toml_by_hub_name[cfg.name], hub_packages, cfg.platform_triples, cargo_credentials, cfg.cargo_config, cfg.validate_lockfile, cfg.debug, cfg.use_legacy_rules_rust_platforms, dry_run = True)
+                    _generate_hub_and_spokes(mctx, cfg.name, annotations, suggested_annotation_snippet_paths, cargo_path, cfg.cargo_lock, cargo_toml_by_hub_name[cfg.name], hub_packages, cfg.platform_triples, cargo_credentials, cfg.cargo_config, cfg.use_netrc_credentials, cfg.validate_lockfile, cfg.debug, cfg.use_legacy_rules_rust_platforms, dry_run = True)
 
-            facts |= _generate_hub_and_spokes(mctx, cfg.name, annotations, suggested_annotation_snippet_paths, cargo_path, cfg.cargo_lock, cargo_toml_by_hub_name[cfg.name], hub_packages, cfg.platform_triples, cargo_credentials, cfg.cargo_config, cfg.validate_lockfile, cfg.debug, cfg.use_legacy_rules_rust_platforms)
+            facts |= _generate_hub_and_spokes(mctx, cfg.name, annotations, suggested_annotation_snippet_paths, cargo_path, cfg.cargo_lock, cargo_toml_by_hub_name[cfg.name], hub_packages, cfg.platform_triples, cargo_credentials, cfg.cargo_config, cfg.use_netrc_credentials, cfg.validate_lockfile, cfg.debug, cfg.use_legacy_rules_rust_platforms)
 
     # Lay down the git repos with generated per-crate BUILD overlays.
     git_repos = {}
@@ -803,6 +807,10 @@ _from_cargo = tag_class(
         "cargo_config": attr.label(),
         "use_home_cargo_credentials": attr.bool(
             doc = "If set, the ruleset will load `~/cargo/credentials.toml` and attach those credentials to registry requests.",
+        ),
+        "use_netrc_credentials": attr.bool(
+            doc = "If true, use $NETRC or ~/.netrc for registry requests. If false, netrc auth is disabled.",
+            default = False,
         ),
         "platform_triples": attr.string_list(
             mandatory = True,
